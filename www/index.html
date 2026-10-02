@@ -406,10 +406,57 @@ function ParentApp({ onSwitchUser }) {
     setRequests(r);
   };
 
-  const togglePremium = async () => {
-    const s = { ...settings, premium: !settings.premium };
-    await sharedSet("family-settings", s);
-    setSettings(s);
+  const PREMIUM_PRODUCT_ID = "com.promisefrance.orderwindow.premium";
+
+  const isNativeApp = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+  const purchasePremium = async () => {
+    if (settings.premium) return;
+    if (!isNativeApp()) {
+      alert("Purchases only work in the installed app, not in a web browser.");
+      return;
+    }
+    try {
+      const { NativePurchases } = window.Capacitor.Plugins;
+      const { product } = await NativePurchases.getProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
+      const confirmed = window.confirm(`Unlock ${product.title} for ${product.priceString}?`);
+      if (!confirmed) return;
+      await NativePurchases.purchaseProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
+      const s = { ...settings, premium: true };
+      await sharedSet("family-settings", s);
+      setSettings(s);
+      alert("Premium unlocked — thank you!");
+    } catch (err) {
+      console.error("Purchase failed:", err);
+      const msg = (err && err.message) ? err.message : "";
+      if (!msg.toLowerCase().includes("cancel")) {
+        alert("Purchase failed. Please try again.");
+      }
+    }
+  };
+
+  const restorePremium = async () => {
+    if (!isNativeApp()) {
+      alert("Restore only works in the installed app, not in a web browser.");
+      return;
+    }
+    try {
+      const { NativePurchases } = window.Capacitor.Plugins;
+      await NativePurchases.restorePurchases();
+      const { purchases } = await NativePurchases.getPurchases({ productType: "inapp" });
+      const owned = purchases.some(p => p.productIdentifier === PREMIUM_PRODUCT_ID);
+      if (owned) {
+        const s = { ...settings, premium: true };
+        await sharedSet("family-settings", s);
+        setSettings(s);
+        alert("Premium restored!");
+      } else {
+        alert("No previous purchase found for this Apple ID.");
+      }
+    } catch (err) {
+      console.error("Restore failed:", err);
+      alert("Restore failed. Please try again.");
+    }
   };
 
   useEffect(() => {
@@ -747,10 +794,17 @@ function ParentApp({ onSwitchUser }) {
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{fontWeight:700,fontSize:13}}>Premium features</div>
-                <div style={{fontSize:11,color:"var(--ink-soft)"}}>{settings.premium ? "On — sandwich builder unlocked" : "Off — sandwiches order as a single flat item"}</div>
+                <div style={{fontSize:11,color:"var(--ink-soft)"}}>{settings.premium ? "Unlocked — sandwich builder available" : "One-time purchase unlocks the sandwich builder"}</div>
               </div>
-              <button onClick={togglePremium} className={`fk-btn ${settings.premium?"fk-btn-herb":""}`}>{settings.premium ? "ON" : "OFF"}</button>
+              {settings.premium ? (
+                <span style={{fontWeight:700,color:"var(--herb)"}}>✓ Unlocked</span>
+              ) : (
+                <button onClick={purchasePremium} className="fk-btn fk-btn-herb">Unlock — $6.99</button>
+              )}
             </div>
+            {!settings.premium && (
+              <button onClick={restorePremium} className="fk-btn" style={{marginTop:8,fontSize:11}}>Restore Purchase</button>
+            )}
           </div>
         </div>
       )}
