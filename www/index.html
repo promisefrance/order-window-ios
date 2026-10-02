@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Order Window (build 13 - emoji fix)</title>
+<title>Plan the Plate</title>
 <link rel="icon" href="data:,">
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -275,8 +275,8 @@ function RoleGate({ onParent, onKid }) {
   return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px"}}>
       <div style={{fontSize:40}}>🍳</div>
-      <h1 className="fk-display" style={{fontSize:48,marginTop:8,textAlign:"center"}}>The Order Window</h1>
-      <p style={{fontSize:14,color:"var(--ink-soft)",textAlign:"center",maxWidth:320,marginTop:4}}>Parent stocks the kitchen. Everyone else places their order for the week.</p>
+      <h1 className="fk-display" style={{fontSize:48,marginTop:8,textAlign:"center"}}>Plan the Plate</h1>
+      <p style={{fontSize:14,color:"var(--ink-soft)",textAlign:"center",maxWidth:320,marginTop:4}}>Plan-ahead ordering for school breakfasts &amp; lunches.</p>
 
       {mode === "pick" && (
         <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:36,width:"100%",maxWidth:320}}>
@@ -799,7 +799,7 @@ function ParentApp({ onSwitchUser }) {
               {settings.premium ? (
                 <span style={{fontWeight:700,color:"var(--herb)"}}>✓ Unlocked</span>
               ) : (
-                <button onClick={purchasePremium} className="fk-btn fk-btn-herb">Unlock — $6.99</button>
+                <button onClick={purchasePremium} className="fk-btn fk-btn-herb">Unlock — $5.99</button>
               )}
             </div>
             {!settings.premium && (
