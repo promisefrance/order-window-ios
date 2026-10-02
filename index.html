@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Plan the Plate</title>
+<link rel="icon" href="data:,">
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    --paper: #EFE6D3; --ink: #2B2620; --ink-soft: #665C4C;
+    --diner-red: #B8402A; --herb: #5C7048; --mustard: #E8C468;
+    --line: #C9BB99; --card: #FBF7ED;
+    font-family: 'Inter', sans-serif; color: var(--ink); background: var(--paper);
+    min-height: 100vh;
+  }
+  .fk-display { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.03em; }
+  .fk-mono { font-family: 'IBM Plex Mono', monospace; }
+  .fk-btn { border: 2px solid var(--ink); background: var(--card); color: var(--ink); border-radius: 10px; padding: 10px 16px; font-weight: 600; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); transition: transform .12s, box-shadow .12s; font-size: 14px; }
+  .fk-btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--ink); }
+  .fk-btn-solid { background: var(--diner-red); color: var(--paper); border-color: var(--diner-red); }
+  .fk-btn-meal-active { background: #E8C468; color: #2B2620; border-color: #2B2620; box-shadow: 0 0 0 3px #F5E1AE, 3px 3px 0 var(--ink); }
+  .fk-btn-meal-active:active { box-shadow: 0 0 0 3px #F5E1AE, 1px 1px 0 var(--ink); }
+  .fk-btn-herb { background: var(--herb); color: var(--paper); border-color: var(--herb); }
+  .fk-chip { border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 8px 14px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .fk-chip-on { background: var(--herb); border-color: var(--herb); color: var(--paper); }
+  .fk-tab { border: none; background: none; border-radius: 999px; color: var(--ink-soft); padding: 6px 12px; font-weight: 600; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .fk-tab-on { background: var(--diner-red); color: var(--paper); }
+  .fk-ticket { background: var(--card); border: 1.5px dashed var(--ink-soft); border-radius: 10px; padding: 16px 20px; }
+  .fk-badge { background: var(--diner-red); color: var(--paper); font-family: 'IBM Plex Mono', monospace; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+  .fk-input { border: 1.5px solid var(--line); background: var(--card); border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; }
+  ::-webkit-scrollbar { height: 6px; width: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+function showLoadError(msg, filename, lineno) {
+  document.getElementById("root").innerHTML =
+    '<pre style="padding:20px;white-space:pre-wrap;font-family:monospace;font-size:13px;color:#B8402A;background:#FBF7ED;">' +
+    'Something went wrong loading the app:\n\n' + msg +
+    (filename ? ('\n\nFile: ' + filename + ' line ' + lineno) : '') +
+    '</pre>';
+}
+window.addEventListener('error', function(e) {
+  var msg = (e.error && e.error.stack) ? e.error.stack : (e.message || e);
+  showLoadError(msg, e.filename, e.lineno);
+});
+window.addEventListener('unhandledrejection', function(e) {
+  var reason = e.reason && e.reason.message ? e.reason.message : e.reason;
+  showLoadError('(async) ' + reason);
+});
+</script>
+<script type="text/babel" data-presets="react">
+
+const { useState, useEffect, useCallback, useRef } = React;
+
+/* ---------- CONFIG: your Supabase project ---------- */
+const SUPABASE_URL = "https://otptbznrrgyvovoszbuj.supabase.co";
+const SUPABASE_KEY = "sb_publishable_ajCmHWxC7Ygv4JsQ6Ez0mQ_OpLV6wZt";
+
+/* ---------- DATA ---------- */
+const PANTRY_CATEGORIES = [
+  { key: "Proteins", label: "🥩 Proteins", keywords: ["chicken","turkey","ham","beef","egg","tuna","salami","bacon","tofu","shrimp","sausage","pepperoni"] },
+  { key: "Breads", label: "🍞 Breads", keywords: ["bread","bun","bagel","tortilla","roll","pita","wrap","toast","croissant"] },
+  { key: "Cereal", label: "🥣 Cereal", keywords: ["cereal","oatmeal","granola","pancake","waffle","muffin","grits"] },
+  { key: "Veggies", label: "🥬 Veggies", keywords: ["lettuce","tomato","cucumber","spinach","pepper","onion","carrot","corn","avocado","olive","pickle"] },
+  { key: "Fruits", label: "🍎 Fruits", keywords: ["apple","banana","berry","berries","grape","orange","melon","peach","pear","mango","pineapple"] },
+  { key: "Dairy", label: "🧀 Dairy", keywords: ["cheese","yogurt","milk","cream","butter","mozzarella","cheddar"] },
+  { key: "Drinks", label: "🥤 Drinks", keywords: ["juice","soda","water","milk","lemonade","tea","smoothie","sparkling"] },
+  { key: "Condiments", label: "🥫 Condiments", keywords: ["ketchup","mustard","mayo","mayonnaise","relish","ranch","hot sauce","bbq sauce","syrup","jam","jelly","honey","salsa","sauce","hummus","guacamole","dressing","salt","pepper","seasoning"] },
+  { key: "Extras", label: "🍬🧂 Sweets/Extras", keywords: ["cookie","candy","chocolate","cake","brownie","gummy","pudding","icecream","ice cream"] },
+];
+
+const LUNCH_CATEGORIES = [
+  { key: "sandwich", label: "🥪 Sandwich", isBuilder:true, baseSource:"Breads", fillingSources:["Veggies","Proteins","Dairy","Condiments"] },
+  { key: "proteins", label: "🥩 Proteins", sources: ["Proteins"] },
+  { key: "veggies", label: "🥬 Veggies", sources: ["Veggies"] },
+  { key: "dairy", label: "🧀 Dairy", sources: ["Dairy"] },
+  { key: "drink", label: "🥤 Drinks", sources: ["Drinks"] },
+  { key: "condiments", label: "🥫 Condiments", sources: ["Condiments"] },
+  { key: "fruit", label: "🍎 Fruits", sources: ["Fruits"] },
+  { key: "extras", label: "🍬🧂 Sweets/Extras", sources: ["Extras"] },
+];
+const CAPPED_CATEGORIES = {};
+const UPGRADE_MSG = "Add Premium to use this feature.";
+const BREAKFAST_CATEGORIES = [
+  { key: "toast", label: "🥣 Cereal & Toast", sources: ["Cereal","Breads"] },
+  { key: "yogurt", label: "🥛 Yogurt", sources: ["Dairy"] },
+  { key: "fruit", label: "🍎 Fruit", sources: ["Fruits"] },
+];
+const MEAL_TYPES = [
+  { key: "breakfast", label: "Breakfast", categories: BREAKFAST_CATEGORIES },
+  { key: "lunch", label: "Lunch", categories: LUNCH_CATEGORIES },
+];
+
+function guessCategory(name) {
+  const n = name.toLowerCase();
+  for (const cat of PANTRY_CATEGORIES) if (cat.keywords.some(k => n.includes(k))) return cat.key;
+  return "Extras";
+}
+function defaultMealTypes(category, name) {
+  if (category === "Breads" && name && name.toLowerCase().includes("bagel")) return ["breakfast"];
+  if (category === "Fruits" || category === "Breads" || category === "Proteins") return ["breakfast","lunch"];
+  if (category === "Cereal") return ["breakfast"];
+  return ["lunch"];
+}
+function itemMealTypes(item) {
+  return item.mealTypes || defaultMealTypes(item.category, item.name);
+}
+function sortByName(items) {
+  return [...items].sort((a,b) => a.name.localeCompare(b.name));
+}
+function isPlainSandwichBread(name) {
+  const n = name.toLowerCase();
+  if (n.includes("sandwich")) return false;
+  return n.includes("croissant") || n.includes("raisin bread");
+}
+function breadPrepOptions(name) {
+  const n = name.toLowerCase();
+  if (n.includes("bagel")) return ["Plain","Toasted","Butter","Jelly","Cream Cheese"];
+  if (n.includes("croissant") || n.includes("tortilla")) return null;
+  return ["Butter","Jelly","Toasted"];
+}
+const SANDWICH_FILLING_KEYWORDS = ["lettuce","tomato","mayo","mustard","pickle","salt","pepper","meunster","muenster","cucumber"];
+const SANDWICH_FILLING_EXCLUDE_KEYWORDS = ["lemon"];
+function toDateStr(d) {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function mondayOf(dateLike) {
+  let d;
+  if (typeof dateLike === "string" && /^\d{4}-\d{2}-\d{2}$/.test(dateLike)) {
+    const [y, m, day] = dateLike.split("-").map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(dateLike);
+  }
+  const dow = d.getDay();
+  const monday = new Date(d); monday.setDate(d.getDate() + ((dow === 0 ? -6 : 1) - dow));
+  monday.setHours(0,0,0,0);
+  return monday;
+}
+function weekLabelForMonday(monday) {
+  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+  const fmt = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `${fmt(monday)} – ${fmt(sunday)}`;
+}
+function currentWeekLabel() {
+  return weekLabelForMonday(mondayOf(new Date()));
+}
+function currentWeekStart() {
+  return toDateStr(mondayOf(new Date()));
+}
+function isPantryWeekCurrent(p) {
+  if (p.weekStart) return mondayOf(p.weekStart).getTime() >= mondayOf(new Date()).getTime();
+  return p.weekLabel === currentWeekLabel();
+}
+function uid() { return Math.random().toString(36).slice(2, 10); }
+
+const EMPTY_PANTRY = () => ({ weekLabel: currentWeekLabel(), weekStart: currentWeekStart(), items: [], updatedAt: 0 });
+const EMPTY_ORDERS = () => ({ weekLabel: currentWeekLabel(), weekStart: currentWeekStart(), orders: {} });
+const EMPTY_KIDS = () => ({ names: [] });
+const EMPTY_SETTINGS = () => ({ premium: false });
+const EMPTY_REQUESTS = () => ({ requests: [] });
+const EMPTY_CART = () => ({ items: [] });
+const EMPTY_HISTORY = () => ({ weeks: [] });
+
+/* ---------- STORAGE: Supabase REST API (plain fetch, no library needed) for shared, localStorage for personal ---------- */
+async function sharedGet(key) {
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/app_state?key=eq.${encodeURIComponent(key)}&select=value`;
+    const res = await fetch(url, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (!rows.length) return null;
+    return rows[0].value;
+  } catch (e) { return null; }
+}
+async function sharedSet(key, value) {
+  try {
+    const url = `${SUPABASE_URL}/rest/v1/app_state`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates"
+      },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
+    });
+    return res.ok;
+  } catch (e) { return false; }
+}
+function localGet(key) {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+}
+function localSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch (e) { return false; }
+}
+
+/* ---------- ROOT ---------- */
+function App() {
+  const [role, setRole] = useState(undefined);
+  const [kidName, setKidName] = useState(null);
+
+  useEffect(() => {
+    const r = localGet("family-role");
+    if (r && r.role === "parent") setRole("parent");
+    else if (r && r.role === "kid" && r.kidName) { setRole("kid"); setKidName(r.kidName); }
+    else setRole(null);
+  }, []);
+
+  const chooseParent = () => { localSet("family-role", { role: "parent" }); setRole("parent"); };
+  const chooseKid = (name) => { localSet("family-role", { role: "kid", kidName: name }); setRole("kid"); setKidName(name); };
+  const switchUser = () => { localSet("family-role", {}); setRole(null); setKidName(null); };
+
+  if (role === undefined) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><p className="fk-mono">loading…</p></div>;
+  if (role === null) return <RoleGate onParent={chooseParent} onKid={chooseKid} />;
+  if (role === "parent") return <ParentApp onSwitchUser={switchUser} />;
+  return <KidApp kidName={kidName} onSwitchUser={switchUser} />;
+}
+
+function RoleGate({ onParent, onKid }) {
+  const [mode, setMode] = useState("pick");
+  const [kids, setKids] = useState([]);
+  const [newName, setNewName] = useState("");
+  const [storedPin, setStoredPin] = useState(undefined);
+  const [pinInput, setPinInput] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [pinError, setPinError] = useState("");
+
+  useEffect(() => { if (mode === "kidPick") sharedGet("family-kids").then(k => setKids(k?.names || [])); }, [mode]);
+
+  const addKid = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    const k = (await sharedGet("family-kids")) || EMPTY_KIDS();
+    if (!k.names.includes(name)) k.names.push(name);
+    await sharedSet("family-kids", k);
+    onKid(name);
+  };
+
+  const startParentGate = async () => {
+    setPinError(""); setPinInput(""); setPinConfirm("");
+    const p = await sharedGet("family-pin");
+    setStoredPin(p?.pin || null);
+    setMode("pin");
+  };
+  const submitSetPin = async () => {
+    if (pinInput.length < 4) { setPinError("Use at least 4 digits."); return; }
+    if (pinInput !== pinConfirm) { setPinError("PINs don't match."); return; }
+    await sharedSet("family-pin", { pin: pinInput });
+    onParent();
+  };
+  const submitCheckPin = () => {
+    if (pinInput === storedPin) { onParent(); return; }
+    setPinError("That's not it — try again.");
+    setPinInput("");
+  };
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+      <div style={{fontSize:40}}>🍳</div>
+      <h1 className="fk-display" style={{fontSize:48,marginTop:8,textAlign:"center"}}>Plan the Plate</h1>
+      <p style={{fontSize:14,color:"var(--ink-soft)",textAlign:"center",maxWidth:320,marginTop:4}}>Plan-ahead ordering for school breakfasts &amp; lunches.</p>
+
+      {mode === "pick" && (
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:36,width:"100%",maxWidth:320}}>
+          <button onClick={startParentGate} className="fk-btn fk-btn-solid" style={{padding:"16px"}}>🍳 I'm running the kitchen</button>
+          <button onClick={()=>setMode("kidPick")} className="fk-btn" style={{padding:"16px"}}>👥 I'm placing an order</button>
+        </div>
+      )}
+
+      {mode === "pin" && storedPin === undefined && (
+        <p className="fk-mono" style={{marginTop:36}}>checking…</p>
+      )}
+
+      {mode === "pin" && storedPin === null && (
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:36,width:"100%",maxWidth:320}}>
+          <p style={{fontSize:13,color:"var(--ink-soft)"}}>First time here — set a PIN so only you can access pantry stocking. Remember it; there's no reset yet.</p>
+          <input value={pinInput} onChange={e=>setPinInput(e.target.value.replace(/\D/g,""))} inputMode="numeric" placeholder="New PIN (4+ digits)" className="fk-input" />
+          <input value={pinConfirm} onChange={e=>setPinConfirm(e.target.value.replace(/\D/g,""))} inputMode="numeric" placeholder="Confirm PIN" className="fk-input" />
+          {pinError && <p style={{fontSize:12,color:"var(--diner-red)"}}>{pinError}</p>}
+          <button onClick={submitSetPin} className="fk-btn fk-btn-solid">Set PIN & continue</button>
+          <button onClick={()=>setMode("pick")} className="fk-btn" style={{fontSize:13}}>Back</button>
+        </div>
+      )}
+
+      {mode === "pin" && storedPin && (
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:36,width:"100%",maxWidth:320}}>
+          <input value={pinInput} onChange={e=>setPinInput(e.target.value.replace(/\D/g,""))} onKeyDown={e=>e.key==="Enter"&&submitCheckPin()} inputMode="numeric" placeholder="Enter PIN" className="fk-input" autoFocus />
+          {pinError && <p style={{fontSize:12,color:"var(--diner-red)"}}>{pinError}</p>}
+          <button onClick={submitCheckPin} className="fk-btn fk-btn-solid">Unlock kitchen</button>
+          <button onClick={()=>setMode("pick")} className="fk-btn" style={{fontSize:13}}>Back</button>
+        </div>
+      )}
+
+      {mode === "kidPick" && (
+        <div style={{display:"flex",flexDirection:"column",gap:16,marginTop:36,width:"100%",maxWidth:320}}>
+          {kids.length > 0 && (
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center"}}>
+              {kids.map(k => <button key={k} onClick={()=>onKid(k)} className="fk-chip">{k}</button>)}
+            </div>
+          )}
+          <div style={{display:"flex",gap:8}}>
+            <input value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addKid()} placeholder="Type your name" className="fk-input" style={{flex:1}} />
+            <button onClick={addKid} className="fk-btn">+</button>
+          </div>
+          <button onClick={()=>setMode("pick")} style={{background:"none",border:"none",textDecoration:"underline",color:"var(--ink-soft)",cursor:"pointer"}}>back</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Header({ title, subtitle, onSwitchUser, badge, extraAction }) {
+  return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"20px 20px 12px"}}>
+      <div>
+        <h1 className="fk-display" style={{fontSize:34,lineHeight:1,margin:0}}>{title}</h1>
+        <p className="fk-mono" style={{fontSize:12,color:"var(--ink-soft)",marginTop:4}}>{subtitle}</p>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        {extraAction}
+        {badge > 0 && <div className="fk-badge">{badge}</div>}
+        <button onClick={onSwitchUser} title="Switch user" className="fk-btn" style={{borderRadius:"999px",padding:"8px"}}>↻</button>
+      </div>
+    </div>
+  );
+}
+function EmptyState({ text }) {
+  return <div style={{border:"1.5px dashed var(--line)",borderRadius:10,padding:"24px 16px",textAlign:"center",fontSize:14,color:"var(--ink-soft)"}}>{text}</div>;
+}
+function UpgradeModal({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(43,38,32,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--paper)",borderRadius:14,padding:"24px 20px",maxWidth:320,width:"100%",border:"1.5px solid var(--ink)",boxShadow:"4px 4px 0 var(--ink)"}}>
+        <div style={{fontSize:28,marginBottom:8,textAlign:"center"}}>⭐</div>
+        <p style={{fontSize:14,fontWeight:600,textAlign:"center",marginBottom:16}}>{message}</p>
+        <button onClick={onClose} className="fk-btn fk-btn-herb" style={{width:"100%"}}>Got it</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- PARENT APP ---------- */
+function ParentApp({ onSwitchUser }) {
+  const [tab, setTab] = useState("pantry");
+  const [pantry, setPantry] = useState(EMPTY_PANTRY());
+  const [orders, setOrders] = useState(EMPTY_ORDERS());
+  const [kids, setKids] = useState([]);
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("Extras");
+  const [lastSeenOrders, setLastSeenOrders] = useState(0);
+  const [editingId, setEditingId] = useState(null);
+  const [editingName, setEditingName] = useState("");
+  const [settings, setSettings] = useState(EMPTY_SETTINGS());
+  const [requests, setRequests] = useState(EMPTY_REQUESTS());
+  const [history, setHistory] = useState(EMPTY_HISTORY());
+  const [upgradeMsg, setUpgradeMsg] = useState(null);
+  const [cart, setCart] = useState(EMPTY_CART());
+
+  const refresh = useCallback(async () => {
+    const [p, o, k, s, r, h, c] = await Promise.all([sharedGet("family-pantry"), sharedGet("family-orders"), sharedGet("family-kids"), sharedGet("family-settings"), sharedGet("family-requests"), sharedGet("family-order-history"), sharedGet("family-cart")]);
+    let pp = p || EMPTY_PANTRY();
+    if (pp.items && pp.items.some(i => i.category === "Sweets")) {
+      pp = { ...pp, items: pp.items.map(i => i.category === "Sweets" ? { ...i, category: "Extras" } : i) };
+      await sharedSet("family-pantry", pp);
+    }
+    setPantry(pp);
+    setOrders(o || EMPTY_ORDERS());
+    setKids((k && k.names) || []);
+    setSettings(s || EMPTY_SETTINGS());
+    setRequests(r || EMPTY_REQUESTS());
+    setHistory(h || EMPTY_HISTORY());
+    setCart(c || EMPTY_CART());
+  }, []);
+
+  const approveRequest = async (req) => {
+    const cat = guessCategory(req.text);
+    const p = { ...pantry, items: [...pantry.items, { id: uid(), name: req.text, category: cat, mealTypes: defaultMealTypes(cat, req.text), active: true }], updatedAt: Date.now() };
+    const r = { requests: requests.requests.filter(x => x.id !== req.id) };
+    await sharedSet("family-pantry", p);
+    await sharedSet("family-requests", r);
+    setPantry(p);
+    setRequests(r);
+  };
+  const declineRequest = async (req) => {
+    const r = { requests: requests.requests.filter(x => x.id !== req.id) };
+    await sharedSet("family-requests", r);
+    setRequests(r);
+  };
+
+  const PREMIUM_PRODUCT_ID = "com.promisefrance.orderwindow.premium";
+
+  const isNativeApp = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+  const purchasePremium = async () => {
+    if (settings.premium) return;
+    if (!isNativeApp()) {
+      alert("Purchases only work in the installed app, not in a web browser.");
+      return;
+    }
+    try {
+      const { NativePurchases } = window.Capacitor.Plugins;
+      const { product } = await NativePurchases.getProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
+      const confirmed = window.confirm(`Unlock ${product.title} for ${product.priceString}?`);
+      if (!confirmed) return;
+      await NativePurchases.purchaseProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
+      const s = { ...settings, premium: true };
+      await sharedSet("family-settings", s);
+      setSettings(s);
+      alert("Premium unlocked — thank you!");
+    } catch (err) {
+      console.error("Purchase failed:", err);
+      const msg = (err && err.message) ? err.message : "";
+      if (!msg.toLowerCase().includes("cancel")) {
+        alert("Purchase failed. Please try again.");
+      }
+    }
+  };
+
+  const restorePremium = async () => {
+    if (!isNativeApp()) {
+      alert("Restore only works in the installed app, not in a web browser.");
+      return;
+    }
+    try {
+      const { NativePurchases } = window.Capacitor.Plugins;
+      await NativePurchases.restorePurchases();
+      const { purchases } = await NativePurchases.getPurchases({ productType: "inapp" });
+      const owned = purchases.some(p => p.productIdentifier === PREMIUM_PRODUCT_ID);
+      if (owned) {
+        const s = { ...settings, premium: true };
+        await sharedSet("family-settings", s);
+        setSettings(s);
+        alert("Premium restored!");
+      } else {
+        alert("No previous purchase found for this Apple ID.");
+      }
+    } catch (err) {
+      console.error("Restore failed:", err);
+      alert("Restore failed. Please try again.");
+    }
+  };
+
+  useEffect(() => {
+    setLastSeenOrders(localGet("family-parent-lastseen")?.ts || 0);
+    refresh();
+    const iv = setInterval(refresh, 5000);
+    return () => clearInterval(iv);
+  }, [refresh]);
+
+  useEffect(() => { setCategory(guessCategory(name || "")); }, [name]);
+
+  const mutatePantry = async (updater) => {
+    const fresh = (await sharedGet("family-pantry")) || pantry || EMPTY_PANTRY();
+    const p = updater(fresh);
+    await sharedSet("family-pantry", p);
+    setPantry(p);
+    return p;
+  };
+  const RECOVERED_ITEMS = [
+    { name: "Croissants", category: "Breads" },
+    { name: "Sandwich with Bagel", category: "Breads" },
+    { name: "Sandwich with Baguette", category: "Breads" },
+    { name: "Sandwich with Croissant", category: "Breads" },
+    { name: "Sandwich with Sourdough", category: "Breads" },
+    { name: "Sandwich with White Bread", category: "Breads" },
+    { name: "Tortilla Wrap", category: "Breads" },
+    { name: "Boiled Eggs", category: "Proteins" },
+    { name: "Chicken Lunch Meat", category: "Proteins" },
+    { name: "Hummus", category: "Proteins" },
+    { name: "Peanut Butter", category: "Proteins" },
+    { name: "Salami", category: "Proteins", active: false },
+    { name: "Scrambled Eggs", category: "Proteins", active: false },
+    { name: "Scrambled Eggs (with Cheese)", category: "Proteins", active: false },
+    { name: "Tofu", category: "Proteins" },
+    { name: "Cucumbers", category: "Veggies" },
+    { name: "Cherry Tomatoes", category: "Veggies" },
+    { name: "Carrot Sticks", category: "Veggies" },
+    { name: "Apples", category: "Fruits" },
+    { name: "Tangerines", category: "Fruits" },
+    { name: "Green Grapes", category: "Fruits" },
+    { name: "Red Grapes", category: "Fruits" },
+    { name: "Apple Juice", category: "Drinks" },
+    { name: "Chocolate Milk", category: "Drinks" },
+    { name: "Cheddar Bunnies", category: "Extras" },
+    { name: "Cheese Crackers", category: "Extras" },
+    { name: "Popcorn", category: "Extras" },
+    { name: "Dried Mango", category: "Extras" },
+    { name: "Dried Apples", category: "Extras" },
+    { name: "Cookies", category: "Extras" },
+    { name: "Chips", category: "Extras" },
+    { name: "Beef Stick", category: "Extras" },
+    { name: "Jelly", category: "Condiments" },
+    { name: "Yellow Mustard", category: "Condiments" },
+    { name: "French Mustard", category: "Condiments" },
+    { name: "Pickles", category: "Condiments" },
+    { name: "Mayo", category: "Condiments" },
+    { name: "Salt and Pepper", category: "Condiments" },
+    { name: "Olive Oil", category: "Condiments" },
+    { name: "Cream Cheese", category: "Condiments" },
+    { name: "Strawberry Cereal", category: "Cereal" },
+    { name: "Almond Flake Cereal", category: "Cereal" },
+    { name: "Bagels", category: "Breads" },
+    { name: "Raisin Bread", category: "Breads" },
+  ];
+  const restoreKnownItems = async () => {
+    await mutatePantry(fresh => {
+      const existingNames = new Set(fresh.items.map(i => i.name.toLowerCase()));
+      const toAdd = RECOVERED_ITEMS.filter(r => !existingNames.has(r.name.toLowerCase()))
+        .map(r => ({ id: uid(), name: r.name, category: r.category, mealTypes: defaultMealTypes(r.category, r.name), active: r.active !== false }));
+      return { ...fresh, items: [...fresh.items, ...toAdd], updatedAt: Date.now() };
+    });
+  };
+  const BACKUP_KEYS = ["family-pantry","family-orders","family-kids","family-settings","family-requests","family-order-history","family-cart","family-favorites"];
+  const exportBackup = async () => {
+    const data = {};
+    for (const k of BACKUP_KEYS) { data[k] = await sharedGet(k); }
+    const payload = { exportedAt: new Date().toISOString(), data };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `order-window-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+  const importBackup = async (file) => {
+    if (!window.confirm("This will overwrite your current pantry, orders, and everything else with the contents of this backup file. Continue?")) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const data = payload.data || payload;
+      for (const k of BACKUP_KEYS) {
+        if (data[k] != null) await sharedSet(k, data[k]);
+      }
+      await refresh();
+      window.alert("Backup restored!");
+    } catch (e) {
+      window.alert("Couldn't read that file. Make sure it's a backup file exported from this app.");
+    }
+  };
+  const addItem = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    await mutatePantry(fresh => {
+      return { ...fresh, items: [...fresh.items, { id: uid(), name: trimmed, category, mealTypes: defaultMealTypes(category, trimmed), active: true }], updatedAt: Date.now() };
+    });
+    setName("");
+  };
+  const removeItem = async (id) => {
+    await mutatePantry(fresh => ({ ...fresh, items: fresh.items.filter(i => i.id !== id), updatedAt: Date.now() }));
+  };
+  const toggleItemMeal = async (id, mt) => {
+    await mutatePantry(fresh => ({ ...fresh, items: fresh.items.map(i => {
+      if (i.id !== id) return i;
+      const cur = itemMealTypes(i);
+      const next = cur.includes(mt) ? cur.filter(x=>x!==mt) : [...cur, mt];
+      return { ...i, mealTypes: next };
+    }), updatedAt: Date.now() }));
+  };
+  const toggleItemActive = async (id) => {
+    await mutatePantry(fresh => ({ ...fresh, items: fresh.items.map(i => i.id === id ? { ...i, active: i.active === false ? true : false } : i), updatedAt: Date.now() }));
+  };
+  const addToCart = async (name, category, source) => {
+    const c = (await sharedGet("family-cart")) || EMPTY_CART();
+    if (c.items.some(x => x.name.toLowerCase() === name.toLowerCase())) return;
+    const next = { items: [...c.items, { id: uid(), name, category, addedAt: Date.now(), source }] };
+    await sharedSet("family-cart", next);
+    setCart(next);
+  };
+  const removeFromCart = async (id) => {
+    const c = (await sharedGet("family-cart")) || EMPTY_CART();
+    const next = { items: c.items.filter(x => x.id !== id) };
+    await sharedSet("family-cart", next);
+    setCart(next);
+  };
+  const clearCart = async () => {
+    if (!window.confirm("Clear the whole grocery list?")) return;
+    const next = EMPTY_CART();
+    await sharedSet("family-cart", next);
+    setCart(next);
+  };
+  const editItemCategory = async (id, newCategory) => {
+    await mutatePantry(fresh => ({ ...fresh, items: fresh.items.map(i => i.id === id ? { ...i, category: newCategory } : i), updatedAt: Date.now() }));
+  };
+  const startEditingItem = (item) => { setEditingId(item.id); setEditingName(item.name); };
+  const saveItemName = async (id) => {
+    const trimmed = editingName.trim();
+    if (trimmed) {
+      await mutatePantry(fresh => ({ ...fresh, items: fresh.items.map(i => i.id === id ? { ...i, name: trimmed } : i), updatedAt: Date.now() }));
+    }
+    setEditingId(null);
+  };
+  const startNewWeek = async () => {
+    const freshPantry = (await sharedGet("family-pantry")) || pantry || EMPTY_PANTRY();
+    const freshOrders = (await sharedGet("family-orders")) || orders || EMPTY_ORDERS();
+    const freshHistory = (await sharedGet("family-order-history")) || history || EMPTY_HISTORY();
+
+    const baseMonday = freshPantry.weekStart ? mondayOf(freshPantry.weekStart) : mondayOf(new Date());
+    const nextMonday = new Date(baseMonday); nextMonday.setDate(baseMonday.getDate() + 7);
+    const newWeekLabel = weekLabelForMonday(nextMonday);
+    const newWeekStart = toDateStr(nextMonday);
+
+    const hadOrders = Object.keys(freshOrders.orders || {}).some(k => freshOrders.orders[k]?.breakfast || freshOrders.orders[k]?.lunch);
+    if (hadOrders) {
+      const entry = { weekLabel: freshOrders.weekLabel, weekStart: freshOrders.weekStart || null, orders: freshOrders.orders, archivedAt: Date.now() };
+      const h = { weeks: [entry, ...(freshHistory.weeks || [])].slice(0, 26) };
+      await sharedSet("family-order-history", h);
+      setHistory(h);
+    }
+
+    const o = { weekLabel: newWeekLabel, weekStart: newWeekStart, orders: {} };
+    const p = { ...freshPantry, weekLabel: newWeekLabel, weekStart: newWeekStart, updatedAt: Date.now() };
+    await sharedSet("family-pantry", p);
+    await sharedSet("family-orders", o);
+    setPantry(p); setOrders(o);
+  };
+  const startNewWeekConfirm = () => {
+    if (window.confirm("Keep your current pantry items and move everyone into next week's orders?")) startNewWeek();
+  };
+
+  const submittedCount = Object.values(orders.orders || {}).reduce((sum, ko) =>
+    sum + ["breakfast","lunch"].filter(mt => ko?.[mt]?.submittedAt > lastSeenOrders).length, 0);
+
+  const openOrders = async () => {
+    setTab("orders");
+    await refresh();
+    const ts = Date.now();
+    localSet("family-parent-lastseen", { ts });
+    setLastSeenOrders(ts);
+  };
+
+  const deleteKidOrder = async (kid, mealKey) => {
+    if (!window.confirm(`Delete ${kid}'s ${mealKey} order?`)) return;
+    const o = { ...orders, orders: { ...orders.orders } };
+    if (o.orders[kid]) {
+      o.orders[kid] = { ...o.orders[kid] };
+      delete o.orders[kid][mealKey];
+    }
+    await sharedSet("family-orders", o);
+    setOrders(o);
+  };
+  const addOrderNote = async (kid, mealKey, text) => {
+    const o = { ...orders, orders: { ...orders.orders } };
+    const existing = o.orders[kid]?.[mealKey];
+    if (!existing) return;
+    o.orders[kid] = { ...o.orders[kid] };
+    o.orders[kid][mealKey] = { ...existing, notes: [...(existing.notes||[]), { from: "Parent", text, ts: Date.now() }] };
+    await sharedSet("family-orders", o);
+    setOrders(o);
+  };
+
+  const grouped = PANTRY_CATEGORIES.map(c => ({ ...c, items: sortByName(pantry.items.filter(i => i.category === c.key)) })).filter(c => c.items.length > 0);
+
+  return (
+    <div>
+      <Header title="The Kitchen" subtitle={`Week of ${pantry.weekLabel}`} onSwitchUser={onSwitchUser} badge={tab==="pantry"?submittedCount:0} />
+      <div style={{display:"flex",flexWrap:"wrap",gap:14,padding:"0 20px",borderBottom:"1.5px solid var(--line)"}}>
+        <button onClick={()=>setTab("pantry")} className={`fk-tab ${tab==="pantry"?"fk-tab-on":""}`}>🍳 Pantry</button>
+        <button onClick={openOrders} className={`fk-tab ${tab==="orders"?"fk-tab-on":""}`}>
+          📋 Orders {submittedCount>0 && <span className="fk-badge fk-mono">{submittedCount}</span>}
+        </button>
+        {settings.premium && (
+          <button onClick={()=>setTab("requests")} className={`fk-tab ${tab==="requests"?"fk-tab-on":""}`}>
+            🙋 Requests {requests.requests.length>0 && <span className="fk-badge fk-mono">{requests.requests.length}</span>}
+          </button>
+        )}
+        {settings.premium && (
+          <button onClick={()=>setTab("history")} className={`fk-tab ${tab==="history"?"fk-tab-on":""}`}>
+            🕰️ History
+          </button>
+        )}
+        <button onClick={()=>setTab("faq")} className={`fk-tab ${tab==="faq"?"fk-tab-on":""}`}>❓ FAQ</button>
+        <button onClick={()=>setTab("cart")} className={`fk-tab ${tab==="cart"?"fk-tab-on":""}`}>
+          🛒 Grocery List {cart.items.length>0 && <span className="fk-badge fk-mono">{cart.items.length}</span>}
+        </button>
+        <button
+          onClick={()=> settings.premium ? setTab("support") : setUpgradeMsg(UPGRADE_MSG)}
+          className={`fk-tab ${tab==="support"?"fk-tab-on":""}`}
+          style={!settings.premium ? {opacity:.45} : undefined}
+          title={!settings.premium ? "Premium feature" : undefined}>
+          💬 Support {!settings.premium && "🔒"}
+        </button>
+      </div>
+
+      <UpgradeModal message={upgradeMsg} onClose={()=>setUpgradeMsg(null)} />
+
+      {tab === "pantry" && (
+        <div style={{padding:20}}>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addItem()} placeholder="Add an item (e.g. cheddar cheese)" className="fk-input" style={{flex:1}} />
+            <select value={category} onChange={e=>setCategory(e.target.value)} className="fk-input">
+              {PANTRY_CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.key}</option>)}
+            </select>
+            <button onClick={addItem} className="fk-btn fk-btn-herb">+</button>
+          </div>
+          <p style={{fontSize:12,color:"var(--ink-soft)",marginBottom:20}}>Category is guessed from the name — change it anytime with the dropdown. Tap an item's name to edit its name or category, then tap ✓ to save. The green switch turns an item off for this week without deleting it from your master list. The <b>B</b> / <b>L</b> tags control whether it shows up for Breakfast, Lunch, or both — tap to toggle.</p>
+
+          {grouped.length === 0 && <EmptyState text="Nothing stocked yet. Add what's on hand and the kids can start ordering." />}
+
+          <div style={{display:"flex",flexDirection:"column",gap:20}}>
+            {grouped.map(cat => (
+              <div key={cat.key}>
+                <h3 style={{fontSize:12,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--ink-soft)",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+                  {cat.label}
+                  {CAPPED_CATEGORIES[cat.key.toLowerCase()] !== undefined && (
+                    settings.premium ? (
+                      <span className="fk-mono" style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:999,background:"var(--herb)",color:"var(--paper)",textTransform:"none",letterSpacing:0}}>capped at {CAPPED_CATEGORIES[cat.key.toLowerCase()]}/lunch order</span>
+                    ) : (
+                      <span onClick={()=>setUpgradeMsg(UPGRADE_MSG)} title="Premium feature" className="fk-mono"
+                        style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:999,background:"var(--line)",color:"var(--ink-soft)",textTransform:"none",letterSpacing:0,cursor:"pointer",opacity:.7}}>
+                        🔒 set item limit — Premium
+                      </span>
+                    )
+                  )}
+                </h3>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {cat.items.map(item => (
+                    <div key={item.id} className="fk-chip" style={{paddingRight:6,cursor:"default",opacity:item.active===false?0.5:1}}>
+                      {editingId === item.id ? (
+                        <>
+                          <input autoFocus value={editingName} onChange={e=>setEditingName(e.target.value)}
+                            onKeyDown={e=>e.key==="Enter"&&saveItemName(item.id)}
+                            style={{border:"none",background:"transparent",fontSize:14,width:Math.max(40,editingName.length*8)}} />
+                          <select value={item.category} onChange={e=>editItemCategory(item.id,e.target.value)} style={{border:"none",background:"transparent",fontSize:12,marginLeft:4}}>
+                            {PANTRY_CATEGORIES.map(c2 => <option key={c2.key} value={c2.key}>{c2.key}</option>)}
+                          </select>
+                          <button onClick={()=>saveItemName(item.id)} style={{border:"none",background:"none",color:"var(--herb)",fontWeight:700,fontSize:14,cursor:"pointer",marginLeft:4}}>✓</button>
+                        </>
+                      ) : (
+                        <span onClick={()=>startEditingItem(item)} style={{cursor:"pointer",textDecoration:(settings.premium && item.active===false)?"line-through":"none"}} title="Tap to edit name or category">{item.name}</span>
+                      )}
+                      {settings.premium ? (
+                        <span onClick={()=>toggleItemActive(item.id)} title={item.active===false ? "Off this week — tap to make active again" : "Active this week — tap to pause without deleting"}
+                          style={{display:"inline-block",width:26,height:15,borderRadius:8,marginLeft:6,cursor:"pointer",position:"relative",verticalAlign:"middle",
+                            background: item.active===false ? "var(--line)" : "var(--herb)"}}>
+                          <span style={{position:"absolute",top:2,left:item.active===false?2:13,width:11,height:11,borderRadius:"50%",background:"var(--paper)"}} />
+                        </span>
+                      ) : (
+                        <span title="Weekly on/off switching is a Premium feature" style={{marginLeft:6,fontSize:11,opacity:.5,verticalAlign:"middle"}}>🔒</span>
+                      )}
+                      <span style={{display:"inline-flex",gap:2,marginLeft:4}}>
+                        {["breakfast","lunch"].map(mt => (
+                          <span key={mt} onClick={()=>toggleItemMeal(item.id,mt)} title={`Available for ${mt}`}
+                            style={{fontSize:9,fontWeight:700,padding:"2px 5px",borderRadius:4,cursor:"pointer",
+                              border:"1px solid var(--line)",
+                              background: itemMealTypes(item).includes(mt) ? "var(--herb)" : "transparent",
+                              color: itemMealTypes(item).includes(mt) ? "var(--paper)" : "var(--ink-soft)"}}>
+                            {mt === "breakfast" ? "B" : "L"}
+                          </span>
+                        ))}
+                      </span>
+                      <button onClick={()=>addToCart(item.name, item.category, "manual")} title="Add to grocery list" style={{border:"none",background:"none",opacity:.6,cursor:"pointer",fontSize:13,marginLeft:2}}>🛒</button>
+                      <button onClick={()=>removeItem(item.id)} style={{border:"none",background:"none",opacity:.6,cursor:"pointer",fontSize:14}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={restoreKnownItems} className="fk-btn" style={{marginTop:32}}>↩️ Restore known items (44 recovered from past chats)</button>
+          {pantry.items.length > 0 && (
+            <button onClick={startNewWeekConfirm} className="fk-btn" style={{marginTop:12}}>↻ Start a new week (keep pantry)</button>
+          )}
+          <div style={{display:"flex",gap:8,marginTop:12}}>
+            <button onClick={exportBackup} className="fk-btn" style={{flex:1}}>⬇️ Backup everything</button>
+            <label className="fk-btn" style={{flex:1,cursor:"pointer",textAlign:"center"}}>
+              ⬆️ Restore from backup
+              <input type="file" accept="application/json" onChange={e=>{ if(e.target.files[0]) importBackup(e.target.files[0]); e.target.value=""; }} style={{display:"none"}} />
+            </label>
+          </div>
+          <div style={{marginTop:32,padding:16,border:"1.5px dashed var(--line)",borderRadius:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:13}}>Premium features</div>
+                <div style={{fontSize:11,color:"var(--ink-soft)"}}>{settings.premium ? "Unlocked — sandwich builder available" : "One-time purchase unlocks the sandwich builder"}</div>
+              </div>
+              {settings.premium ? (
+                <span style={{fontWeight:700,color:"var(--herb)"}}>✓ Unlocked</span>
+              ) : (
+                <button onClick={purchasePremium} className="fk-btn fk-btn-herb">Unlock — $5.99</button>
+              )}
+            </div>
+            {!settings.premium && (
+              <button onClick={restorePremium} className="fk-btn" style={{marginTop:8,fontSize:11}}>Restore Purchase</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tab === "orders" && <OrdersRail orders={orders} kids={kids} onDeleteOrder={deleteKidOrder} onAddNote={addOrderNote} />}
+
+      {tab === "requests" && (
+        <div style={{padding:20}}>
+          {requests.requests.length === 0 ? (
+            <EmptyState text="No item requests right now." />
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {requests.requests.map(req => (
+                <div key={req.id} style={{border:"1.5px solid var(--line)",borderRadius:10,padding:"12px 14px"}}>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:2}}>{req.text}</div>
+                  <div style={{fontSize:12,color:"var(--ink-soft)",marginBottom:10}}>{req.kidName} · for {req.mealType} · {new Date(req.createdAt).toLocaleDateString()}</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>approveRequest(req)} className="fk-btn fk-btn-herb" style={{flex:1}}>✓ Approve &amp; add to pantry</button>
+                    <button onClick={()=>declineRequest(req)} className="fk-btn" style={{flex:1}}>✕ Decline</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {tab === "history" && <HistoryTab history={history} />}
+
+      {tab === "faq" && <FAQTab />}
+
+      {tab === "support" && settings.premium && <SupportTab />}
+
+      {tab === "cart" && (
+        <div style={{padding:20}}>
+          {cart.items.length === 0 ? (
+            <EmptyState text="Nothing on the list yet. Tap 🛒 next to any pantry item to add it, or items get added automatically when you mark them out of stock." />
+          ) : (
+            <>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                {cart.items.map(it => (
+                  <div key={it.id} className="fk-ticket" style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px"}}>
+                    <span style={{fontSize:14}}>{it.name} <span style={{fontSize:11,color:"var(--ink-soft)"}}>({it.category}{it.source==="auto" ? " · out of stock" : ""})</span></span>
+                    <button onClick={()=>removeFromCart(it.id)} title="Mark bought / remove" style={{border:"none",background:"none",opacity:.6,cursor:"pointer",fontSize:16}}>✓</button>
+                  </div>
+                ))}
+              </div>
+              <button onClick={clearCart} className="fk-btn" style={{color:"var(--diner-red)",borderColor:"var(--diner-red)"}}>Clear list</button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrdersRail({ orders, kids, onDeleteOrder, onAddNote }) {
+  const withAny = kids.filter(k => orders.orders?.[k]?.breakfast || orders.orders?.[k]?.lunch);
+  const waiting = kids.filter(k => !orders.orders?.[k]?.breakfast && !orders.orders?.[k]?.lunch);
+  if (kids.length === 0) return <div style={{padding:20}}><EmptyState text="No one has joined yet. Once a kid picks their name, their order shows up here." /></div>;
+  return (
+    <div style={{padding:20,display:"flex",flexDirection:"column",gap:16}}>
+      {withAny.length === 0 && <EmptyState text={`Waiting on orders for the week of ${orders.weekLabel}.`} />}
+      {withAny.map(k => <TicketCard key={k} kidName={k} kidOrders={orders.orders[k]} onDeleteOrder={onDeleteOrder} onAddNote={onAddNote} />)}
+      {waiting.length > 0 && (
+        <div>
+          <h3 style={{fontSize:12,fontWeight:700,textTransform:"uppercase",color:"var(--ink-soft)",marginBottom:8}}>Still waiting on</h3>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {waiting.map(k => <div key={k} className="fk-chip" style={{opacity:.6,cursor:"default"}}>{k}</div>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+function TicketCard({ kidName, kidOrders, onDeleteOrder, onAddNote }) {
+  const [noteDrafts, setNoteDrafts] = useState({});
+  return (
+    <div className="fk-ticket">
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,borderBottom:"1.5px dashed var(--ink-soft)",paddingBottom:8}}>
+        <span>🧑</span><span style={{fontWeight:600,fontSize:14}}>{kidName}</span>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {MEAL_TYPES.map(mt => {
+          const order = kidOrders?.[mt.key];
+          const cats = order ? mt.categories.filter(c => (order.selections[c.key]||[]).length > 0) : [];
+          const notes = order?.notes || [];
+          return (
+            <div key={mt.key}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4,gap:8}}>
+                <h4 style={{fontSize:11,fontWeight:700,textTransform:"uppercase",color:"var(--diner-red)",margin:0}}>{mt.label}</h4>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  {order && <span className="fk-mono" style={{fontSize:10,color:"var(--ink-soft)"}}>{new Date(order.submittedAt).toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"})}</span>}
+                  {order && onDeleteOrder && <button onClick={()=>onDeleteOrder(kidName, mt.key)} title="Delete this order" style={{border:"none",background:"none",color:"var(--diner-red)",cursor:"pointer",fontSize:12}}>🗑</button>}
+                </div>
+              </div>
+              {!order && <p style={{fontSize:12,color:"var(--ink-soft)",margin:0}}>Not ordered yet.</p>}
+              {order && cats.length===0 && <p style={{fontSize:12,color:"var(--ink-soft)",margin:0}}>No items selected.</p>}
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {cats.map(c => (
+                  <div key={c.key} className="fk-mono" style={{fontSize:12,display:"flex",gap:6}}>
+                    <span><b>{c.label}:</b> {order.selections[c.key].join(", ")}</span>
+                  </div>
+                ))}
+              </div>
+              {order && onAddNote && (
+                <div style={{marginTop:8,paddingTop:8,borderTop:"1px dashed var(--line)"}}>
+                  {notes.length > 0 && (
+                    <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:6}}>
+                      {notes.map((n,i) => (
+                        <div key={i} style={{fontSize:11,background:n.from===kidName?"var(--card)":"var(--mustard)",borderRadius:6,padding:"4px 8px"}}>
+                          <b>{n.from}:</b> {n.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={noteDrafts[mt.key]||""} onChange={e=>setNoteDrafts(d=>({...d,[mt.key]:e.target.value}))}
+                      onKeyDown={e=>{ if(e.key==="Enter" && (noteDrafts[mt.key]||"").trim()){ onAddNote(kidName, mt.key, noteDrafts[mt.key].trim()); setNoteDrafts(d=>({...d,[mt.key]:""})); } }}
+                      placeholder="Ask a quick question..." style={{flex:1,border:"1.5px solid var(--line)",borderRadius:6,padding:"5px 8px",fontSize:12,fontFamily:"inherit"}} />
+                    <button onClick={()=>{ if((noteDrafts[mt.key]||"").trim()){ onAddNote(kidName, mt.key, noteDrafts[mt.key].trim()); setNoteDrafts(d=>({...d,[mt.key]:""})); } }}
+                      className="fk-btn" style={{fontSize:11,padding:"5px 10px"}}>Send</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function HistoryTab({ history }) {
+  const [expanded, setExpanded] = useState(null);
+  const weeks = history.weeks || [];
+  if (weeks.length === 0) {
+    return <div style={{padding:20}}><EmptyState text="No past weeks archived yet. History starts saving automatically the next time you start a new week." /></div>;
+  }
+  return (
+    <div style={{padding:20,display:"flex",flexDirection:"column",gap:12}}>
+      {weeks.map((wk, idx) => {
+        const kidsWithOrders = Object.keys(wk.orders || {}).filter(k => wk.orders[k]?.breakfast || wk.orders[k]?.lunch);
+        const open = expanded === idx;
+        return (
+          <div key={idx} className="fk-ticket">
+            <button onClick={()=>setExpanded(open ? null : idx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit"}}>
+              <span style={{fontWeight:700,fontSize:14}}>Week of {wk.weekLabel}</span>
+              <span style={{fontSize:12,color:"var(--ink-soft)"}}>{kidsWithOrders.length} {kidsWithOrders.length===1?"order":"orders"} &nbsp;{open ? "▲" : "▼"}</span>
+            </button>
+            {open && (
+              <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:12,borderTop:"1.5px dashed var(--ink-soft)",paddingTop:12}}>
+                {kidsWithOrders.length === 0 ? (
+                  <p style={{fontSize:12,color:"var(--ink-soft)",margin:0}}>No orders were placed that week.</p>
+                ) : (
+                  kidsWithOrders.map(k => <TicketCard key={k} kidName={k} kidOrders={wk.orders[k]} />)
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const FAQ_ITEMS = [
+  { q: "How do I add items to the pantry?", a: "Go to the Pantry tab, type an item name, pick a category (or let it guess), and tap +." },
+  { q: "How do kids place orders?", a: "Kids pick their name, choose Breakfast or Lunch, tap items to add them, then tap the button at the bottom to send the order to the kitchen." },
+  { q: "How do I start a new week?", a: "In the Pantry tab, tap \"Start a new week.\" This keeps your pantry items and moves everyone into next week's fresh order sheet." },
+  { q: "Can I remove an order after it's submitted?", a: "Yes — kids can delete their own order from their side, and parents can delete any kid's order from the Orders tab." },
+  { q: "What does Premium include?", a: "Premium unlocks the sandwich fillings builder, weekly on/off pantry switches, kid item requests, order history, item limits on Extras and Sweets, and Support." },
+];
+function FAQTab() {
+  const [open, setOpen] = useState(null);
+  return (
+    <div style={{padding:20,display:"flex",flexDirection:"column",gap:10}}>
+      {FAQ_ITEMS.map((item, idx) => (
+        <div key={idx} className="fk-ticket">
+          <button onClick={()=>setOpen(open===idx?null:idx)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"inherit",textAlign:"left"}}>
+            <span style={{fontWeight:700,fontSize:14}}>{item.q}</span>
+            <span style={{fontSize:12,color:"var(--ink-soft)"}}>{open===idx?"▲":"▼"}</span>
+          </button>
+          {open===idx && <p style={{fontSize:13,color:"var(--ink-soft)",marginTop:10,marginBottom:0}}>{item.a}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+function SupportTab() {
+  return (
+    <div style={{padding:20}}>
+      <div className="fk-ticket">
+        <h3 style={{fontSize:14,fontWeight:700,marginBottom:8}}>💬 Premium Support</h3>
+        <p style={{fontSize:13,color:"var(--ink-soft)",marginBottom:14}}>Need help with something not covered in the FAQ? As a Premium family, you get priority support.</p>
+        <p style={{fontSize:13}}>Email us anytime at <b>support@theorderwindow.app</b> and we'll get back to you as soon as we can.</p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- KID APP ---------- */
+function KidApp({ kidName, onSwitchUser }) {
+  const [pantry, setPantry] = useState(EMPTY_PANTRY());
+  const [orders, setOrders] = useState(EMPTY_ORDERS());
+  const [mealType, setMealType] = useState("lunch");
+  const [activeCat, setActiveCat] = useState(LUNCH_CATEGORIES[0].key);
+  const [selections, setSelections] = useState({ breakfast:{}, lunch:{} });
+  const [lastSeenPantry, setLastSeenPantry] = useState(0);
+  const [justSubmitted, setJustSubmitted] = useState(false);
+  const [sandwichBase, setSandwichBase] = useState(null);
+  const [sandwichFillings, setSandwichFillings] = useState([]);
+  const [saladOpen, setSaladOpen] = useState(false);
+  const [saladPicks, setSaladPicks] = useState([]);
+  const [settings, setSettings] = useState(EMPTY_SETTINGS());
+  const [capMsg, setCapMsg] = useState(null);
+  const [requestText, setRequestText] = useState("");
+  const [requestSent, setRequestSent] = useState(false);
+  const requestBoxRef = useRef(null);
+  const scrollToRequest = () => requestBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const [favorites, setFavorites] = useState([]);
+
+  const refresh = useCallback(async () => {
+    const [p,o,s] = await Promise.all([sharedGet("family-pantry"), sharedGet("family-orders"), sharedGet("family-settings")]);
+    setPantry(p || EMPTY_PANTRY());
+    setOrders(o || EMPTY_ORDERS());
+    setSettings(s || EMPTY_SETTINGS());
+  }, []);
+
+  const saveFavorite = async (line) => {
+    const f = (await sharedGet("family-favorites")) || {};
+    const mine = f[kidName] || [];
+    if (mine.some(x => x.line === line)) return;
+    const next = { ...f, [kidName]: [...mine, { id: uid(), line }] };
+    await sharedSet("family-favorites", next);
+    setFavorites(next[kidName]);
+  };
+  const removeFavorite = async (id) => {
+    const f = (await sharedGet("family-favorites")) || {};
+    const mine = (f[kidName] || []).filter(x => x.id !== id);
+    const next = { ...f, [kidName]: mine };
+    await sharedSet("family-favorites", next);
+    setFavorites(mine);
+  };
+  const addFavoriteToOrder = (line) => {
+    setSelections(prev => {
+      const cur = prev[mealType]?.sandwich || [];
+      if (cur.includes(line)) return prev;
+      return { ...prev, [mealType]: { ...prev[mealType], sandwich: [...cur, line] } };
+    });
+  };
+
+  const sendItemRequest = async () => {
+    const trimmed = requestText.trim();
+    if (!trimmed) return;
+    const r = await sharedGet("family-requests");
+    const base = r || EMPTY_REQUESTS();
+    const next = { requests: [...base.requests, { id: uid(), kidName, text: trimmed, mealType, status: "pending", createdAt: Date.now() }] };
+    await sharedSet("family-requests", next);
+    setRequestText("");
+    setRequestSent(true);
+    setTimeout(()=>setRequestSent(false), 2200);
+  };
+
+  useEffect(() => {
+    (async () => {
+      setLastSeenPantry(localGet(`family-lastseen-${kidName}`)?.ts || 0);
+      const [p,o,s,f] = await Promise.all([sharedGet("family-pantry"), sharedGet("family-orders"), sharedGet("family-settings"), sharedGet("family-favorites")]);
+      const pp = p || EMPTY_PANTRY(), oo = o || EMPTY_ORDERS();
+      setPantry(pp); setOrders(oo); setSettings(s || EMPTY_SETTINGS());
+      setFavorites((f && f[kidName]) || []);
+      const mine = oo.orders?.[kidName];
+      if (oo.weekLabel === pp.weekLabel && mine) {
+        setSelections({ breakfast: mine.breakfast?.selections||{}, lunch: mine.lunch?.selections||{} });
+      }
+    })();
+    const iv = setInterval(refresh, 5000);
+    return () => clearInterval(iv);
+  }, [refresh, kidName]);
+
+  const dismissBanner = () => { const ts = Date.now(); localSet(`family-lastseen-${kidName}`,{ts}); setLastSeenPantry(ts); };
+  const switchMeal = (mt) => { setMealType(mt); setActiveCat(MEAL_TYPES.find(m=>m.key===mt).categories[0].key); };
+  const toggleItem = (catKey, itemName) => {
+    const cur = selections[mealType]?.[catKey] || [];
+    const limit = CAPPED_CATEGORIES[catKey];
+    if (settings.premium && limit && !cur.includes(itemName) && cur.length >= limit) {
+      setCapMsg(`You can only add ${limit} items from this category per order.`);
+      return;
+    }
+    setSelections(prev => {
+      const c = prev[mealType]?.[catKey] || [];
+      const next = c.includes(itemName) ? c.filter(n=>n!==itemName) : [...c, itemName];
+      return { ...prev, [mealType]: { ...prev[mealType], [catKey]: next } };
+    });
+  };
+  const openSandwichBuilder = (item) => { setSandwichBase(item); setSandwichFillings([]); };
+  const toggleFilling = (name) => {
+    setSandwichFillings(prev => prev.includes(name) ? prev.filter(n=>n!==name) : [...prev, name]);
+  };
+  const addSandwichToOrder = () => {
+    if (!sandwichBase) return;
+    const line = sandwichFillings.length ? `${sandwichBase.name} with ${sandwichFillings.join(", ")}` : sandwichBase.name;
+    setSelections(prev => {
+      const cur = prev.lunch?.sandwich || [];
+      return { ...prev, lunch: { ...prev.lunch, sandwich: [...cur, line] } };
+    });
+    setSandwichBase(null); setSandwichFillings([]);
+  };
+  const removeOrderLine = (catKey, line) => {
+    setSelections(prev => {
+      const cur = prev[mealType]?.[catKey] || [];
+      return { ...prev, [mealType]: { ...prev[mealType], [catKey]: cur.filter(n=>n!==line) } };
+    });
+  };
+  const setBreadPrep = (catKey, itemName, prep) => {
+    setSelections(prev => {
+      const cur = (prev[mealType]?.[catKey] || []).filter(l => l !== itemName && !l.startsWith(`${itemName} (`));
+      const next = prep ? [...cur, `${itemName} (${prep})`] : cur;
+      return { ...prev, [mealType]: { ...prev[mealType], [catKey]: next } };
+    });
+  };
+  const toggleSaladPick = (name) => {
+    setSaladPicks(prev => prev.includes(name) ? prev.filter(n=>n!==name) : [...prev, name]);
+  };
+  const addSaladToOrder = () => {
+    if (saladPicks.length === 0) return;
+    const line = `Salad with ${saladPicks.join(", ")}`;
+    setSelections(prev => {
+      const cur = prev.lunch?.veggies || [];
+      return { ...prev, lunch: { ...prev.lunch, veggies: [...cur, line] } };
+    });
+    setSaladPicks([]); setSaladOpen(false);
+  };
+  const submit = async () => {
+    const base = orders.weekLabel === pantry.weekLabel ? orders : { weekLabel: pantry.weekLabel, orders: {} };
+    const o = { ...base, orders: { ...base.orders } };
+    const existing = o.orders[kidName]?.[mealType];
+    o.orders[kidName] = { ...(o.orders[kidName]||{}) };
+    o.orders[kidName][mealType] = { selections: selections[mealType]||{}, submittedAt: Date.now(), notes: existing?.notes || [] };
+    await sharedSet("family-orders", o);
+    setOrders(o);
+    setJustSubmitted(true);
+    setTimeout(()=>setJustSubmitted(false), 2200);
+  };
+  const deleteOrder = async () => {
+    if (!window.confirm(`Delete your ${activeMealDef.label.toLowerCase()} order?`)) return;
+    const base = orders.weekLabel === pantry.weekLabel ? orders : { weekLabel: pantry.weekLabel, orders: {} };
+    const o = { ...base, orders: { ...base.orders } };
+    if (o.orders[kidName]) {
+      o.orders[kidName] = { ...o.orders[kidName] };
+      delete o.orders[kidName][mealType];
+    }
+    await sharedSet("family-orders", o);
+    setOrders(o);
+    setSelections(prev => ({ ...prev, [mealType]: {} }));
+  };
+  const [noteText, setNoteText] = useState("");
+  const addNote = async () => {
+    const text = noteText.trim();
+    if (!text) return;
+    const base = orders.weekLabel === pantry.weekLabel ? orders : { weekLabel: pantry.weekLabel, orders: {} };
+    const o = { ...base, orders: { ...base.orders } };
+    const existing = o.orders[kidName]?.[mealType];
+    if (!existing) return;
+    o.orders[kidName] = { ...o.orders[kidName] };
+    o.orders[kidName][mealType] = { ...existing, notes: [...(existing.notes||[]), { from: kidName, text, ts: Date.now() }] };
+    await sharedSet("family-orders", o);
+    setOrders(o);
+    setNoteText("");
+  };
+
+  const isNew = pantry.updatedAt > lastSeenPantry;
+  const alreadySubmitted = orders.weekLabel === pantry.weekLabel && !!orders.orders?.[kidName]?.[mealType];
+  const currentSelections = selections[mealType] || {};
+  const totalPicked = Object.values(currentSelections).reduce((s,a)=>s+(a?.length||0),0);
+  const activeMealDef = MEAL_TYPES.find(m=>m.key===mealType);
+  const activeCatDef = activeMealDef.categories.find(c=>c.key===activeCat);
+  const builderActive = activeCatDef.isBuilder && settings.premium;
+  const availableItems = sortByName(activeCatDef.isBuilder
+    ? pantry.items.filter(i => i.category === activeCatDef.baseSource && (!settings.premium || i.active !== false) && itemMealTypes(i).includes(mealType))
+    : pantry.items.filter(i => activeCatDef.sources.includes(i.category) && (!settings.premium || i.active !== false) && itemMealTypes(i).includes(mealType)));
+  const fillingItems = builderActive
+    ? sortByName(pantry.items.filter(i => activeCatDef.fillingSources.includes(i.category) && (!settings.premium || i.active !== false) && itemMealTypes(i).includes(mealType)))
+    : [];
+
+  return (
+    <div>
+      <UpgradeModal message={capMsg} onClose={()=>setCapMsg(null)} />
+      <Header title={`Hey, ${kidName}`} subtitle={`Week of ${pantry.weekLabel}`} onSwitchUser={onSwitchUser} badge={0}
+        extraAction={settings.premium && (
+          <button onClick={scrollToRequest} title="Special request an item" className="fk-btn" style={{fontSize:12,padding:"6px 10px"}}>📝 Request</button>
+        )} />
+
+      {isNew && (
+        <div style={{margin:"0 20px 12px",borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--mustard)"}}>
+          <div style={{fontSize:14,fontWeight:600}}>🔔 The kitchen just got restocked!</div>
+          <button onClick={dismissBanner} style={{border:"none",background:"none",textDecoration:"underline",fontSize:12,cursor:"pointer"}}>got it</button>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:8,padding:"0 20px 12px"}}>
+        {MEAL_TYPES.map(mt => {
+          const isOrdered = orders.weekLabel===pantry.weekLabel && orders.orders?.[kidName]?.[mt.key];
+          return (
+            <button key={mt.key} onClick={()=>switchMeal(mt.key)} className={`fk-btn ${mealType===mt.key?"fk-btn-meal-active":""}`} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              <span>{mt.label}</span>
+              {isOrdered && (
+                <span className="fk-mono" style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:999,background: mealType===mt.key ? "rgba(43,38,32,0.15)" : "var(--herb)", color: mealType===mt.key ? "#2B2620" : "var(--paper)"}}>ordered</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"0 20px 8px"}}>
+        {activeMealDef.categories.map(c => (
+          <button key={c.key} onClick={()=>setActiveCat(c.key)} className={`fk-tab ${activeCat===c.key?"fk-tab-on":""}`}>
+            {c.label} {(currentSelections[c.key]?.length||0)>0 && <span className="fk-mono" style={{fontSize:10,color:"var(--herb)"}}>({currentSelections[c.key].length})</span>}
+          </button>
+        ))}
+      </div>
+      <div style={{borderBottom:"1.5px solid var(--line)"}} />
+
+      <div style={{padding:20}}>
+        {activeCat === "sandwich" && favorites.length > 0 && (
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink-soft)",textTransform:"uppercase",letterSpacing:.5,marginBottom:6}}>⭐ Your favorites</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {favorites.map(fav => (
+                <div key={fav.id} style={{display:"flex",alignItems:"center",gap:6,border:"1.5px solid var(--mustard)",borderRadius:20,padding:"4px 6px 4px 12px",background:"var(--mustard)"}}>
+                  <button onClick={()=>addFavoriteToOrder(fav.line)} className="fk-mono" style={{border:"none",background:"none",cursor:"pointer",fontSize:12,fontWeight:700}}>+ {fav.line}</button>
+                  <button onClick={()=>removeFavorite(fav.id)} title="Remove favorite" style={{border:"none",background:"none",opacity:.6,cursor:"pointer",fontSize:12}}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {builderActive ? (
+          availableItems.length === 0 ? (
+            <EmptyState text="No bread stocked yet — check back after the next pantry run." />
+          ) : (
+            <div>
+              <p style={{fontSize:12,color:"var(--ink-soft)",marginBottom:12}}>Tap a bread to open its fillings, pick what goes inside, then add it to your order.</p>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {availableItems.map(item => {
+                  if (isPlainSandwichBread(item.name)) {
+                    const on = (currentSelections.sandwich||[]).includes(item.name);
+                    return (
+                      <button key={item.id} onClick={()=>toggleItem("sandwich", item.name)}
+                        style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",border:"1.5px solid var(--line)",borderRadius:10,background:on?"var(--herb)":"var(--card)",color:on?"var(--paper)":"var(--ink)",cursor:"pointer",fontWeight:700,fontSize:14}}>
+                        <span>🥐 {item.name}</span>
+                        <span style={{fontSize:12,fontWeight:600}}>{on ? "✓ added" : "+ add"}</span>
+                      </button>
+                    );
+                  }
+                  const open = sandwichBase?.id === item.id;
+                  return (
+                    <div key={item.id} style={{border:"1.5px solid var(--line)",borderRadius:10,overflow:"hidden"}}>
+                      <button
+                        onClick={()=> open ? (setSandwichBase(null),setSandwichFillings([])) : openSandwichBuilder(item)}
+                        style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",border:"none",background:open?"var(--mustard)":"var(--card)",cursor:"pointer",fontWeight:700,fontSize:14}}>
+                        <span>🥪 {item.name}</span>
+                        <span style={{fontSize:12,fontWeight:600}}>{open ? "▲ close" : "▼ add fillings"}</span>
+                      </button>
+                      {open && (
+                        <div style={{padding:"12px 14px",background:"var(--paper)"}}>
+                          {fillingItems.length === 0 ? (
+                            <EmptyState text="No fillings stocked yet — you can still add the sandwich plain." />
+                          ) : (
+                            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+                              {fillingItems.map(fi => {
+                                const on = sandwichFillings.includes(fi.name);
+                                return (
+                                  <button key={fi.id} onClick={()=>toggleFilling(fi.name)} className={`fk-chip ${on?"fk-chip-on":""}`}>
+                                    {on && "✓"} {fi.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <button onClick={addSandwichToOrder} className="fk-btn fk-btn-herb" style={{width:"100%"}}>
+                            + Add to my order{sandwichFillings.length ? ` (${sandwichFillings.length} filling${sandwichFillings.length>1?"s":""})` : " (plain)"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        ) : availableItems.length === 0 ? (
+          <EmptyState text={`Nothing stocked for ${activeCatDef.label.replace(/^\S+\s/,"").toLowerCase()} yet — check back after the next pantry run.`} />
+        ) : (
+          <div>
+            {activeCat === "sandwich" && !settings.premium && (
+              <button onClick={()=>setCapMsg(UPGRADE_MSG)}
+                style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"10px 14px",borderRadius:10,border:"1.5px dashed var(--ink-soft)",background:"var(--line)",color:"var(--ink-soft)",fontSize:12,fontWeight:700,marginBottom:12,cursor:"pointer"}}>
+                <span>🔒 Unlock the sandwich fillings builder with Premium</span>
+                <span>›</span>
+              </button>
+            )}
+            {activeCat === "veggies" && settings.premium && (
+              <div style={{border:"1.5px solid var(--line)",borderRadius:10,overflow:"hidden",marginBottom:12}}>
+                <button onClick={()=>setSaladOpen(o=>!o)}
+                  style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",border:"none",background:saladOpen?"var(--mustard)":"var(--card)",cursor:"pointer",fontWeight:700,fontSize:14}}>
+                  <span>🥗 Salad</span>
+                  <span style={{fontSize:12,fontWeight:600}}>{saladOpen ? "▲ close" : "▼ build a salad"}</span>
+                </button>
+                {saladOpen && (
+                  <div style={{padding:"12px 14px",background:"var(--paper)"}}>
+                    <p style={{fontSize:12,color:"var(--ink-soft)",marginBottom:10}}>Pick as many veggies as you want, then add it as one salad.</p>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+                      {availableItems.map(v => {
+                        const on = saladPicks.includes(v.name);
+                        return (
+                          <button key={v.id} onClick={()=>toggleSaladPick(v.name)} className={`fk-chip ${on?"fk-chip-on":""}`}>
+                            {on && "✓"} {v.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button onClick={addSaladToOrder} disabled={saladPicks.length===0} className="fk-btn fk-btn-herb" style={{width:"100%",opacity:saladPicks.length===0?.5:1}}>
+                      + Add salad to my order{saladPicks.length ? ` (${saladPicks.length})` : ""}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {settings.premium && CAPPED_CATEGORIES[activeCat] && (
+              <div className="fk-mono" style={{fontSize:11,fontWeight:700,color:"var(--ink-soft)",marginBottom:8}}>
+                {(currentSelections[activeCat]||[]).length} of {CAPPED_CATEGORIES[activeCat]} used
+              </div>
+            )}
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {availableItems.map(item => {
+              if (item.category === "Breads" && settings.premium && breadPrepOptions(item.name)) {
+                const line = (currentSelections[activeCat]||[]).find(l => l === item.name || l.startsWith(`${item.name} (`));
+                const currentPrep = line ? line.slice(line.indexOf("(")+1, -1) : "";
+                const prepOptions = breadPrepOptions(item.name);
+                return (
+                  <div key={item.id} style={{display:"flex",alignItems:"center",gap:6,border:`1.5px solid ${currentPrep?"var(--herb)":"#007AFF"}`,borderRadius:20,padding:"4px 6px 4px 12px",background:currentPrep?"var(--herb)":"#FFFFFF",color:currentPrep?"var(--paper)":"#007AFF"}}>
+                    <span style={{fontSize:14,fontWeight:600}}>{item.name}</span>
+                    <select value={currentPrep} onChange={e=>setBreadPrep(activeCat,item.name,e.target.value)} style={{border:"none",background:"transparent",fontSize:12,color:"inherit"}}>
+                      <option value="">Not ordered</option>
+                      {prepOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </div>
+                );
+              }
+              const on = (currentSelections[activeCat]||[]).includes(item.name);
+              const limit = CAPPED_CATEGORIES[activeCat];
+              const capReached = settings.premium && limit && !on && (currentSelections[activeCat]||[]).length >= limit;
+              return (
+                <button key={item.id} onClick={()=>toggleItem(activeCat,item.name)} className={`fk-chip ${on?"fk-chip-on":""}`} style={capReached ? {opacity:.4,cursor:"not-allowed"} : undefined}>
+                  {on && "✓"} {item.name}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeCat === "veggies" && (currentSelections.veggies||[]).some(l => l.startsWith("Salad with")) && (
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
+              {currentSelections.veggies.filter(l => l.startsWith("Salad with")).map((line,idx) => (
+                <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--card)",border:"1px solid var(--line)",borderRadius:8,padding:"8px 12px"}}>
+                  <span className="fk-mono" style={{fontSize:12}}>{line}</span>
+                  <button onClick={()=>removeOrderLine("veggies",line)} style={{border:"none",background:"none",opacity:.6,cursor:"pointer",fontSize:14}}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          </div>
+        )}
+        {(currentSelections.sandwich?.length > 0) && (
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--ink-soft)",textTransform:"uppercase",letterSpacing:.5}}>Added to your order</div>
+            {currentSelections.sandwich.map((line,idx) => (
+              <div key={idx} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"var(--card)",border:"1px solid var(--line)",borderRadius:8,padding:"8px 12px"}}>
+                <span className="fk-mono" style={{fontSize:12}}>{line}</span>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <button onClick={()=>saveFavorite(line)} title="Save as favorite" style={{border:"none",background:"none",opacity:.6,cursor:"pointer",fontSize:14}}>☆</button>
+                  <button onClick={()=>removeOrderLine("sandwich",line)} style={{border:"none",background:"none",opacity:.6,cursor:"pointer",fontSize:14}}>✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{padding:"0 20px 24px"}}>
+        <div className="fk-ticket" style={{marginBottom:16}}>
+          <h3 style={{fontSize:12,fontWeight:700,textTransform:"uppercase",color:"var(--ink-soft)",marginBottom:8}}>Your {activeMealDef.label.toLowerCase()} order so far</h3>
+          {totalPicked === 0 ? <p style={{fontSize:12,color:"var(--ink-soft)",margin:0}}>Nothing picked yet — tap items above.</p> : (
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {activeMealDef.categories.filter(c=>(currentSelections[c.key]?.length||0)>0).map(c => (
+                <div key={c.key} className="fk-mono" style={{fontSize:12}}><b>{c.label}:</b> {currentSelections[c.key].join(", ")}</div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button onClick={submit} disabled={totalPicked===0} className="fk-btn fk-btn-solid" style={{width:"100%",opacity:totalPicked===0?.5:1}}>
+          📋 {alreadySubmitted ? `Update my ${activeMealDef.label.toLowerCase()} order` : `Send ${activeMealDef.label.toLowerCase()} order to the kitchen`}
+        </button>
+
+        {alreadySubmitted && (
+          <button onClick={deleteOrder} className="fk-btn" style={{width:"100%",marginTop:8,color:"var(--diner-red)",borderColor:"var(--diner-red)"}}>
+            🗑 Delete my {activeMealDef.label.toLowerCase()} order
+          </button>
+        )}
+
+        {alreadySubmitted && (
+          <div style={{marginTop:16,border:"1.5px solid var(--line)",borderRadius:10,padding:12}}>
+            <h4 style={{fontSize:12,fontWeight:700,textTransform:"uppercase",color:"var(--ink-soft)",marginBottom:8}}>💬 Notes on this order</h4>
+            {(orders.orders?.[kidName]?.[mealType]?.notes||[]).length === 0 ? (
+              <p style={{fontSize:12,color:"var(--ink-soft)",margin:"0 0 10px"}}>No notes yet. Ask a quick question about this order here.</p>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+                {(orders.orders?.[kidName]?.[mealType]?.notes||[]).map((n,i) => (
+                  <div key={i} style={{fontSize:12,background:n.from===kidName?"var(--card)":"var(--mustard)",borderRadius:8,padding:"6px 10px"}}>
+                    <b>{n.from}:</b> {n.text}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",gap:6}}>
+              <input value={noteText} onChange={e=>setNoteText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addNote()}
+                placeholder="Add a note..." style={{flex:1,border:"1.5px solid var(--line)",borderRadius:8,padding:"8px 10px",fontSize:13,fontFamily:"inherit"}} />
+              <button onClick={addNote} className="fk-btn" style={{fontSize:12,padding:"8px 12px"}}>Send</button>
+            </div>
+          </div>
+        )}
+
+        {justSubmitted && (
+          <div style={{textAlign:"center",marginTop:16}}>
+            <span className="fk-mono" style={{fontWeight:700,padding:"6px 12px",border:"2px solid var(--herb)",color:"var(--herb)",borderRadius:6,display:"inline-block",transform:"rotate(-3deg)"}}>ORDER SENT ✓</span>
+          </div>
+        )}
+
+        {settings.premium && (
+          <div ref={requestBoxRef} style={{marginTop:24,padding:16,border:"1.5px dashed var(--line)",borderRadius:10}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>📝 Special request an item</div>
+            <p style={{fontSize:12,color:"var(--ink-soft)",marginBottom:10}}>Don't see what you want? Ask the kitchen to stock it.</p>
+            <input value={requestText} onChange={e=>setRequestText(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendItemRequest()}
+              placeholder="e.g. strawberry granola bars" className="fk-input" style={{width:"100%",marginBottom:10}} />
+            <button onClick={sendItemRequest} disabled={!requestText.trim()} className="fk-btn fk-btn-herb" style={{width:"100%",opacity:requestText.trim()?1:.5}}>
+              Send request
+            </button>
+            {requestSent && (
+              <div style={{textAlign:"center",marginTop:10}}>
+                <span className="fk-mono" style={{fontWeight:700,padding:"6px 12px",border:"2px solid var(--herb)",color:"var(--herb)",borderRadius:6,display:"inline-block"}}>REQUEST SENT ✓</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+</script>
+</body>
+</html>
