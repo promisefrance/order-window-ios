@@ -4,7 +4,7 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 60
     integrations:
-      app_store_connect: PlanThePlateKey
+      app_store_connect: PlanthePlateKey
     environment:
       vars:
         APP_STORE_APPLE_ID: 6838885081
