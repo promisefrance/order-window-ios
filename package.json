@@ -7,7 +7,8 @@
   },
   "dependencies": {
     "@capacitor/core": "^6.1.2",
-    "@capacitor/ios": "^6.1.2"
+    "@capacitor/ios": "^6.1.2",
+    "@capgo/native-purchases": "^6.0.42"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2"
