@@ -177,12 +177,27 @@ const EMPTY_CART = () => ({ items: [] });
 const EMPTY_HISTORY = () => ({ weeks: [] });
 
 /* ---------- STORAGE: Supabase REST API (plain fetch, no library needed) for shared, localStorage for personal ---------- */
+/* Each family has a private code. Every stored key is prefixed with it, and the
+   code is also sent as a header so the database can verify it (row-level security). */
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+let FAMILY_CODE = "";
+function normalizeCode(c) { return String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function formatCode(c) { const n = normalizeCode(c); return n.length === 10 ? n.slice(0,5) + "-" + n.slice(5) : n; }
+function generateCode() {
+  const bytes = new Uint8Array(10);
+  (window.crypto || window.msCrypto).getRandomValues(bytes);
+  let out = ""; for (let i = 0; i < 10; i++) out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+  return out;
+}
+function setFamilyCode(c) { FAMILY_CODE = normalizeCode(c); }
+function famHeaders(extra) {
+  return Object.assign({ apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "x-family-code": FAMILY_CODE }, extra || {});
+}
 async function sharedGet(key) {
   try {
-    const url = `${SUPABASE_URL}/rest/v1/app_state?key=eq.${encodeURIComponent(key)}&select=value`;
-    const res = await fetch(url, {
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-    });
+    if (!FAMILY_CODE) return null;
+    const url = `${SUPABASE_URL}/rest/v1/app_state?key=eq.${encodeURIComponent(FAMILY_CODE + ":" + key)}&select=value`;
+    const res = await fetch(url, { headers: famHeaders() });
     if (!res.ok) return null;
     const rows = await res.json();
     if (!rows.length) return null;
@@ -191,16 +206,12 @@ async function sharedGet(key) {
 }
 async function sharedSet(key, value) {
   try {
+    if (!FAMILY_CODE) return false;
     const url = `${SUPABASE_URL}/rest/v1/app_state`;
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "resolution=merge-duplicates"
-      },
-      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() })
+      headers: famHeaders({ "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" }),
+      body: JSON.stringify({ key: FAMILY_CODE + ":" + key, value, updated_at: new Date().toISOString() })
     });
     return res.ok;
   } catch (e) { return false; }
@@ -262,8 +273,11 @@ async function rolloverWeekIfNeeded() {
 function App() {
   const [role, setRole] = useState(undefined);
   const [kidName, setKidName] = useState(null);
+  const [hasFamily, setHasFamily] = useState(undefined);
 
   useEffect(() => {
+    const fc = localGet("family-code");
+    if (fc && normalizeCode(fc.code).length === 10) { setFamilyCode(fc.code); setHasFamily(true); } else setHasFamily(false);
     const r = localGet("family-role");
     if (r && r.role === "parent") setRole("parent");
     else if (r && r.role === "kid" && r.kidName) { setRole("kid"); setKidName(r.kidName); }
@@ -273,11 +287,78 @@ function App() {
   const chooseParent = () => { localSet("family-role", { role: "parent" }); setRole("parent"); };
   const chooseKid = (name) => { localSet("family-role", { role: "kid", kidName: name }); setRole("kid"); setKidName(name); };
   const switchUser = () => { localSet("family-role", {}); setRole(null); setKidName(null); };
+  const leaveFamily = () => { localSet("family-role", {}); localSet("family-code", {}); setFamilyCode(""); setRole(null); setKidName(null); setHasFamily(false); };
+  const enterFamily = (code) => { setFamilyCode(code); localSet("family-code", { code: normalizeCode(code) }); setHasFamily(true); };
 
+  if (role === undefined || hasFamily === undefined) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><p className="fk-mono">loading…</p></div>;
+  if (!hasFamily) return <FamilyGate onEnter={enterFamily} />;
   if (role === undefined) return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><p className="fk-mono">loading…</p></div>;
   if (role === null) return <RoleGate onParent={chooseParent} onKid={chooseKid} />;
-  if (role === "parent") return <ParentApp onSwitchUser={switchUser} />;
-  return <KidApp kidName={kidName} onSwitchUser={switchUser} />;
+  if (role === "parent") return <ParentApp onSwitchUser={switchUser} onLeaveFamily={leaveFamily} />;
+  return <KidApp kidName={kidName} onSwitchUser={switchUser} onLeaveFamily={leaveFamily} />;
+}
+
+function FamilyGate({ onEnter }) {
+  const [mode, setMode] = useState("pick");
+  const [newCode, setNewCode] = useState("");
+  const [joinInput, setJoinInput] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const startNew = () => { setNewCode(generateCode()); setMode("created"); };
+  const copyCode = async () => {
+    try { await navigator.clipboard.writeText(formatCode(newCode)); setCopied(true); } catch (e) { setCopied(false); }
+  };
+  const join = async () => {
+    const c = normalizeCode(joinInput);
+    if (c.length !== 10) { setErr("Family codes have 10 letters and numbers, like K7M2P-9XQ4R."); return; }
+    setBusy(true); setErr("");
+    setFamilyCode(c);
+    const kids = await sharedGet("family-kids");
+    const pin = await sharedGet("family-pin");
+    const settings = await sharedGet("family-settings");
+    const meta = await sharedGet("family-meta");
+    setBusy(false);
+    if (!kids && !pin && !settings && !meta) { setFamilyCode(""); setErr("We couldn't find a family with that code. Check it and try again."); return; }
+    onEnter(c);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+      <div style={{fontSize:40}}>🍳</div>
+      <h1 className="fk-display" style={{fontSize:48,marginTop:8,textAlign:"center"}}>Plan the Plate</h1>
+      <p style={{fontSize:14,color:"var(--ink-soft)",textAlign:"center",maxWidth:320,marginTop:4}}>Plan-ahead ordering for school breakfasts &amp; lunches.</p>
+
+      {mode === "pick" && (
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:36,width:"100%",maxWidth:320}}>
+          <button onClick={startNew} className="fk-btn fk-btn-solid" style={{padding:"16px"}}>🏠 Start my family</button>
+          <button onClick={()=>setMode("join")} className="fk-btn" style={{padding:"16px"}}>🔑 Join with a family code</button>
+          <p style={{fontSize:12,color:"var(--ink-soft)",textAlign:"center"}}>Each family gets its own private space. Parents start the family; kids and other grown-ups join with the family code.</p>
+        </div>
+      )}
+
+      {mode === "created" && (
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:32,width:"100%",maxWidth:320}}>
+          <p style={{fontSize:13,color:"var(--ink-soft)",textAlign:"center"}}>Your family code. Write it down — it is the only way to get back in or to add another phone.</p>
+          <div className="fk-mono" style={{fontSize:30,fontWeight:700,textAlign:"center",letterSpacing:2,padding:"14px 8px",border:"2px dashed var(--ink)",borderRadius:10,background:"var(--card)"}}>{formatCode(newCode)}</div>
+          <button onClick={copyCode} className="fk-btn">{copied ? "✓ Copied" : "Copy code"}</button>
+          <button onClick={async()=>{ setFamilyCode(newCode); await sharedSet("family-meta", { created: new Date().toISOString() }); onEnter(newCode); }} className="fk-btn fk-btn-solid">I saved it — continue</button>
+          <button onClick={()=>setMode("pick")} className="fk-btn" style={{fontSize:13}}>Back</button>
+        </div>
+      )}
+
+      {mode === "join" && (
+        <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:32,width:"100%",maxWidth:320}}>
+          <p style={{fontSize:13,color:"var(--ink-soft)",textAlign:"center"}}>Enter the family code from a parent's phone (Settings in the kitchen view).</p>
+          <input value={joinInput} onChange={e=>setJoinInput(e.target.value.toUpperCase())} onKeyDown={e=>e.key==="Enter"&&join()} placeholder="XXXXX-XXXXX" autoCapitalize="characters" autoCorrect="off" spellCheck={false} className="fk-input fk-mono" style={{textAlign:"center",fontSize:20,letterSpacing:2}} autoFocus />
+          {err && <p style={{fontSize:12,color:"var(--diner-red)"}}>{err}</p>}
+          <button onClick={join} disabled={busy} className="fk-btn fk-btn-solid">{busy ? "Checking…" : "Join family"}</button>
+          <button onClick={()=>{setMode("pick");setErr("");}} className="fk-btn" style={{fontSize:13}}>Back</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function RoleGate({ onParent, onKid }) {
@@ -405,7 +486,7 @@ function UpgradeModal({ message, onClose }) {
 }
 
 /* ---------- PARENT APP ---------- */
-function ParentApp({ onSwitchUser }) {
+function ParentApp({ onSwitchUser, onLeaveFamily }) {
   const [tab, setTab] = useState("pantry");
   const [pantry, setPantry] = useState(EMPTY_PANTRY());
   const [orders, setOrders] = useState(EMPTY_ORDERS());
@@ -838,6 +919,12 @@ function ParentApp({ onSwitchUser }) {
             </label>
           </div>
           <div style={{marginTop:32,padding:16,border:"1.5px dashed var(--line)",borderRadius:10}}>
+            <div style={{fontWeight:700,fontSize:13}}>Family code</div>
+            <div style={{fontSize:11,color:"var(--ink-soft)",marginBottom:8}}>Share it with your kids and other grown-ups so they can join. Keep it private.</div>
+            <div className="fk-mono" style={{fontSize:22,fontWeight:700,letterSpacing:2}}>{formatCode(FAMILY_CODE)}</div>
+            <button onClick={onLeaveFamily} className="fk-btn" style={{marginTop:10,fontSize:11}}>Use a different family code</button>
+          </div>
+          <div style={{marginTop:16,padding:16,border:"1.5px dashed var(--line)",borderRadius:10}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{fontWeight:700,fontSize:13}}>Premium features</div>
@@ -1053,7 +1140,7 @@ function SupportTab() {
 }
 
 /* ---------- KID APP ---------- */
-function KidApp({ kidName, onSwitchUser }) {
+function KidApp({ kidName, onSwitchUser, onLeaveFamily }) {
   const [pantry, setPantry] = useState(EMPTY_PANTRY());
   const [orders, setOrders] = useState(EMPTY_ORDERS());
   const [mealType, setMealType] = useState("lunch");
