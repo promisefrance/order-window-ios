@@ -544,12 +544,17 @@ function ParentApp({ onSwitchUser, onLeaveFamily }) {
       alert("Purchases only work in the installed app, not in a web browser.");
       return;
     }
+    let step = "starting";
     try {
       const { NativePurchases } = window.Capacitor.Plugins;
+      if (!NativePurchases) throw new Error("purchase plugin not found");
+      step = "looking up product";
       const { product } = await NativePurchases.getProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
       const confirmed = window.confirm(`Unlock ${product.title} for ${product.priceString}?`);
       if (!confirmed) return;
+      step = "purchasing";
       await NativePurchases.purchaseProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
+      step = "saving";
       const s = { ...settings, premium: true };
       await sharedSet("family-settings", s);
       setSettings(s);
@@ -558,7 +563,7 @@ function ParentApp({ onSwitchUser, onLeaveFamily }) {
       console.error("Purchase failed:", err);
       const msg = (err && err.message) ? err.message : "";
       if (!msg.toLowerCase().includes("cancel")) {
-        alert("Purchase failed. Please try again.");
+        alert("Purchase failed (" + step + "). " + (msg || JSON.stringify(err) || "Please try again."));
       }
     }
   };
