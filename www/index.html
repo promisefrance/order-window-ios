@@ -546,14 +546,24 @@ function ParentApp({ onSwitchUser, onLeaveFamily }) {
     }
     let step = "starting";
     try {
-      const { NativePurchases } = window.Capacitor.Plugins;
-      if (!NativePurchases) throw new Error("purchase plugin not found");
+      const NP = window.Capacitor.Plugins.NativePurchases;
+      if (!NP) throw new Error("purchase plugin not found");
       step = "looking up product";
-      const { product } = await NativePurchases.getProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
-      const confirmed = window.confirm(`Unlock ${product.title} for ${product.priceString}?`);
+      let product = null;
+      if (typeof NP.getProducts === "function") {
+        const r = await NP.getProducts({ productIdentifiers: [PREMIUM_PRODUCT_ID], productType: "inapp" });
+        product = (r && r.products && r.products[0]) || null;
+      } else if (typeof NP.getProduct === "function") {
+        const r = await NP.getProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
+        product = (r && r.product) || null;
+      } else {
+        throw new Error("plugin has no product lookup. Methods: " + Object.keys(NP).join(", "));
+      }
+      if (!product) throw new Error("Apple did not return the product " + PREMIUM_PRODUCT_ID);
+      const confirmed = window.confirm(`Unlock ${product.title || "Premium"} for ${product.priceString || "$5.99"}?`);
       if (!confirmed) return;
       step = "purchasing";
-      await NativePurchases.purchaseProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
+      await NP.purchaseProduct({ productIdentifier: PREMIUM_PRODUCT_ID, productType: "inapp" });
       step = "saving";
       const s = { ...settings, premium: true };
       await sharedSet("family-settings", s);
@@ -573,11 +583,17 @@ function ParentApp({ onSwitchUser, onLeaveFamily }) {
       alert("Restore only works in the installed app, not in a web browser.");
       return;
     }
+    let step = "starting";
     try {
-      const { NativePurchases } = window.Capacitor.Plugins;
-      await NativePurchases.restorePurchases();
-      const { purchases } = await NativePurchases.getPurchases({ productType: "inapp" });
-      const owned = purchases.some(p => p.productIdentifier === PREMIUM_PRODUCT_ID);
+      const NP = window.Capacitor.Plugins.NativePurchases;
+      if (!NP) throw new Error("purchase plugin not found");
+      step = "restoring";
+      if (typeof NP.restorePurchases === "function") await NP.restorePurchases();
+      step = "checking purchases";
+      if (typeof NP.getPurchases !== "function") throw new Error("plugin has no purchase list. Methods: " + Object.keys(NP).join(", "));
+      const r = await NP.getPurchases({ productType: "inapp" });
+      const purchases = (r && r.purchases) || [];
+      const owned = purchases.some(p => (p.productIdentifier || p.productId) === PREMIUM_PRODUCT_ID);
       if (owned) {
         const s = { ...settings, premium: true };
         await sharedSet("family-settings", s);
@@ -588,7 +604,7 @@ function ParentApp({ onSwitchUser, onLeaveFamily }) {
       }
     } catch (err) {
       console.error("Restore failed:", err);
-      alert("Restore failed. Please try again.");
+      alert("Restore failed (" + step + "). " + ((err && err.message) || "Please try again."));
     }
   };
 
